@@ -1,0 +1,68 @@
+// ============================================================================
+// ESQUEMA DE BASE DE DATOS - Plataforma de Podcast
+// ============================================================================
+// Este archivo describe la estructura de la base de datos en lenguaje simple.
+// Prisma lee este archivo y genera automáticamente el código necesario para
+// leer y escribir datos, sin tener que escribir SQL a mano.
+//
+// FASE 1: Solo definimos la tabla "Episodio", que es lo único que necesitamos
+// para el catálogo y el reproductor. En fases siguientes vamos a agregar:
+//   - Fase 2: Usuario (login)
+//   - Fase 4: Suscripcion, Pago (gestión de suscriptores)
+//   - Fase 6: EventoEscucha (métricas)
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // PostgreSQL es el motor de base de datos real para producción.
+  //
+  // Si en algún momento querés probar el proyecto en tu computadora sin
+  // configurar una base de datos PostgreSQL todavía, podés cambiar
+  // momentáneamente esta línea a  provider = "sqlite"  y poner en tu
+  // archivo .env:  DATABASE_URL="file:./dev.db"
+  // Eso crea una base de datos de prueba en un solo archivo, sin instalar
+  // nada. Antes de subir esto a producción, volvé a "postgresql".
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// Episodio: representa un capítulo del podcast.
+// ----------------------------------------------------------------------------
+model Episodio {
+  // Identificador único generado automáticamente (no lo elige el usuario).
+  id String @id @default(uuid())
+
+  // Datos que se muestran al oyente.
+  titulo      String
+  descripcion String @db.Text
+
+  // URLs de los archivos. El archivo físico (audio/imagen) vive en
+  // Cloudflare R2; aquí solo guardamos la dirección donde encontrarlo.
+  imagenPortadaUrl String @map("imagen_portada_url")
+  audioUrl         String @map("audio_url")
+
+  // Duración en segundos. Sirve para mostrar "45:30" en el reproductor
+  // y, más adelante (Fase 6), para calcular el % escuchado de cada episodio.
+  duracionSegundos Int @map("duracion_segundos")
+
+  // Fecha "editorial" de publicación (puede ser distinta a cuándo se cargó
+  // el registro en el sistema). Se usa para ordenar el listado.
+  fechaPublicacion DateTime @map("fecha_publicacion")
+
+  // Si es true, el episodio requiere una suscripción activa para
+  // escucharse completo (esto se activa de verdad en la Fase 4; por ahora
+  // el campo existe pero no bloquea nada todavía).
+  esPremium Boolean @default(false) @map("es_premium")
+
+  // Fecha técnica de cuándo se creó el registro en la base de datos.
+  // Es informativa, no se muestra al oyente.
+  creadoEn DateTime @default(now()) @map("creado_en")
+
+  // Nombre real de la tabla en PostgreSQL (en snake_case, convención
+  // habitual en bases de datos, aunque en el código usemos camelCase).
+  @@map("episodios")
+}

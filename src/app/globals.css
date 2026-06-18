@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   SISTEMA DE DISEÑO - Plataforma de Podcast
+   ============================================================================
+   Paleta inspirada en radio de campo: tonos cálidos de papel, verde oliva
+   como color principal (no genérico azul/morado de "app tech"), terracota
+   reservado solo para detalles de contenido premium.
+
+   IMPORTANTE: esta plataforma está pensada para una audiencia de 45+ años,
+   muchos con poca práctica en interfaces digitales. Por eso priorizamos:
+   - Tamaños de fuente grandes (nunca menores a 16px en texto importante)
+   - Alto contraste entre texto y fondo
+   - Botones grandes y con bordes claros (nada de "flat design" ambiguo)
+   ============================================================================ */
+
+:root {
+  /* Fondo cálido tipo papel, no blanco puro (menos cansador a la vista) */
+  --color-fondo: #f7f3ec;
+  --color-fondo-tarjeta: #ffffff;
+
+  /* Texto principal casi negro, nunca gris claro (legibilidad ante todo) */
+  --color-texto: #2b2620;
+  --color-texto-secundario: #6b6458;
+
+  /* Verde oliva como color principal de la marca (botones, enlaces activos) */
+  --color-principal: #5b6b3f;
+  --color-principal-oscuro: #44502f;
+  --color-principal-claro: #e8ecdf;
+
+  /* Terracota reservado SOLO para indicar contenido premium/destacado */
+  --color-premium: #b5562c;
+  --color-premium-claro: #f5e3d8;
+
+  /* Bordes y líneas divisorias, sutiles */
+  --color-borde: #e0d9c8;
+}
+
+@theme inline {
+  --color-background: var(--color-fondo);
+  --color-foreground: var(--color-texto);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-fraunces);
+}
+
+body {
+  background: var(--color-fondo);
+  color: var(--color-texto);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Asegura que el foco de teclado siempre sea visible (accesibilidad) */
+:focus-visible {
+  outline: 3px solid var(--color-principal);
+  outline-offset: 2px;
+}
