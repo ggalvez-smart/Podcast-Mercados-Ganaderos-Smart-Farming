@@ -40,6 +40,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# prisma (el cliente se regenera automáticamente con "prisma generate"
+# cada vez que se instalan las dependencias del proyecto)
+/src/generated
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

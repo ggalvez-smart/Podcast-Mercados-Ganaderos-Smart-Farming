@@ -5,28 +5,32 @@
 // Prisma lee este archivo y genera automáticamente el código necesario para
 // leer y escribir datos, sin tener que escribir SQL a mano.
 //
-// FASE 1: Solo definimos la tabla "Episodio", que es lo único que necesitamos
-// para el catálogo y el reproductor. En fases siguientes vamos a agregar:
-//   - Fase 2: Usuario (login)
+// FASE 1: tabla "Episodio" (catálogo y reproductor).
+// FASE 2 (actual): tablas "User" y "ProgresoEscucha" (login y recordar
+//   punto de escucha asociado a la cuenta, en vez de solo al navegador).
+// Próximas fases:
 //   - Fase 4: Suscripcion, Pago (gestión de suscriptores)
 //   - Fase 6: EventoEscucha (métricas)
+//
+// NOTA TÉCNICA (Prisma 7): usamos engineType = "client", la variante
+// "sin motor en Rust" de Prisma, que en vez de descargar un programa
+// aparte (escrito en Rust) para hablar con la base de datos, genera
+// directamente código TypeScript. Esto simplifica el despliegue (menos
+// archivos pesados, menos cosas que puedan fallar al desplegar en
+// Vercel) y es el camino recomendado oficialmente por Prisma para
+// proyectos nuevos a partir de la versión 7. Como contraparte, Prisma
+// 7 requiere un "adaptador de driver" explícito (ver src/lib/prisma.ts)
+// en vez de conectarse solo.
 // ============================================================================
 
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client"
+  output     = "../src/generated/prisma"
+  engineType = "client"
 }
 
 datasource db {
-  // PostgreSQL es el motor de base de datos real para producción.
-  //
-  // Si en algún momento querés probar el proyecto en tu computadora sin
-  // configurar una base de datos PostgreSQL todavía, podés cambiar
-  // momentáneamente esta línea a  provider = "sqlite"  y poner en tu
-  // archivo .env:  DATABASE_URL="file:./dev.db"
-  // Eso crea una base de datos de prueba en un solo archivo, sin instalar
-  // nada. Antes de subir esto a producción, volvé a "postgresql".
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ----------------------------------------------------------------------------
@@ -62,7 +66,126 @@ model Episodio {
   // Es informativa, no se muestra al oyente.
   creadoEn DateTime @default(now()) @map("creado_en")
 
+  // Un episodio puede tener muchos registros de progreso (uno por cada
+  // usuario que lo haya escuchado alguna vez).
+  progresos ProgresoEscucha[]
+
   // Nombre real de la tabla en PostgreSQL (en snake_case, convención
   // habitual en bases de datos, aunque en el código usemos camelCase).
   @@map("episodios")
+}
+
+// ----------------------------------------------------------------------------
+// User: representa una cuenta de oyente registrado en la plataforma.
+//
+// NOTA TÉCNICA IMPORTANTE: el adaptador de Prisma para NextAuth
+// (@auth/prisma-adapter) espera que este modelo se llame exactamente
+// "User" y que tenga los campos "email", "name", "emailVerified" e
+// "image" con esos nombres exactos en el código (el adaptador los
+// tiene escritos así internamente, no se pueden renombrar a gusto).
+// Por eso el modelo se llama "User" en este archivo, aunque mapeamos
+// la tabla real de la base de datos a "usuarios" con @@map, y los
+// campos que nosotros agregamos (no los que pide NextAuth) sí están
+// en español.
+// ----------------------------------------------------------------------------
+model User {
+  id String @id @default(uuid())
+
+  email String @unique
+
+  // Estos tres campos (name, emailVerified, image) no los usamos
+  // activamente todavía en nuestra aplicación, pero el adaptador de
+  // NextAuth los necesita declarados para funcionar correctamente
+  // (por ejemplo, si en el futuro agregamos "ingresar con Google",
+  // se completarían solos con el nombre y la foto de la cuenta de
+  // Google de la persona).
+  name          String?
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+
+  // Versión encriptada de la contraseña. NUNCA guardamos la contraseña
+  // real: este texto es el resultado de pasarla por un algoritmo
+  // (bcrypt) que no se puede "deshacer". Para verificar un login, lo
+  // que se hace es encriptar la contraseña que la persona escribió en
+  // ese momento y comparar el resultado con este texto, no comparar
+  // las contraseñas directamente.
+  contrasenaHash String @map("contrasena_hash")
+
+  creadoEn DateTime @default(now()) @map("creado_en")
+
+  // Un usuario puede tener progreso guardado en muchos episodios.
+  progresos ProgresoEscucha[]
+
+  // Tablas técnicas que necesita NextAuth para manejar sesiones activas
+  // (ver explicación más abajo, en los modelos Session y Account).
+  accounts Account[]
+  sessions Session[]
+
+  @@map("usuarios")
+}
+
+// ----------------------------------------------------------------------------
+// ProgresoEscucha: por cada combinación de usuario + episodio, guarda
+// hasta qué segundo llegó a escuchar. Reemplaza el guardado que en la
+// Fase 1 vivía solo en el navegador (localStorage), para que el punto
+// de escucha viaje con la cuenta y no con el dispositivo.
+// ----------------------------------------------------------------------------
+model ProgresoEscucha {
+  id String @id @default(uuid())
+
+  usuario   User   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  usuarioId String @map("usuario_id")
+
+  episodio   Episodio @relation(fields: [episodioId], references: [id], onDelete: Cascade)
+  episodioId String   @map("episodio_id")
+
+  segundosEscuchados Int      @map("segundos_escuchados")
+  actualizadoEn      DateTime @updatedAt @map("actualizado_en")
+
+  // Un mismo usuario no puede tener dos registros de progreso para el
+  // mismo episodio; siempre se actualiza el mismo registro.
+  @@unique([usuarioId, episodioId])
+  @@map("progresos_escucha")
+}
+
+// ----------------------------------------------------------------------------
+// Las siguientes dos tablas (Account y Session) son tablas TÉCNICAS que
+// requiere internamente la librería NextAuth para funcionar. No las vamos
+// a usar directamente en nuestro código de la aplicación: las maneja
+// NextAuth automáticamente por detrás. Las incluimos tal cual la
+// documentación oficial las define (incluyendo nombres de campo como
+// "userId" en inglés, que el adaptador necesita exactamente así), para
+// que el sistema de login funcione correctamente.
+//
+// "Account" guarda métodos de inicio de sesión (en el futuro, por
+// ejemplo, si sumamos "iniciar sesión con Google", se registraría acá).
+// "Session" guarda las sesiones activas de cada usuario logueado.
+// ----------------------------------------------------------------------------
+model Account {
+  id                String  @id @default(uuid())
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique @map("session_token")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  @@map("sessions")
 }
